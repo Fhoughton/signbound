@@ -1,152 +1,95 @@
-"""
-IMPORTS
-"""
+# Input handling
 import pyautogui
-import time
 import keyboard
+
+# Image handling
 from PIL import Image
 from PIL import GifImagePlugin
+
+# Internals for managing game interactions
+from signbound_lib import *
+
+# Time delay and terminal input
 import sys
+import time
 
+# Adds a small delay for each action since the game can only handle 1 input per frame
 pyautogui.PAUSE = 0.05
-"""
-HELPER/MAIN FUNCTIONS
-"""
-def q_press(_):
-  x, y = pyautogui.position()
-  print(x,y)
 
-keyboard.on_press_key("q", q_press)
+pause = False
 
-doexit = False
+# Hotkey functions
+def toggle_pause(_):
+    global pause
+    pause = not pause
 
-def p_press(_):
-  global doexit
-  doexit = True
 
-keyboard.on_press_key("p", p_press)
+def request_exit(_):
+    global doexit
+    doexit = True
 
-"""
-while True:
-  x = input("X:")
-  y = input("Y:")
-
-  pyautogui.moveTo(int(x),int(y))
-"""
-
-def fetch_canvas_coordinate(x, y):
-  return (760 + x*12, 490 + y*12)
-
-def open_color_menu():
-  color_menu_coords = (1238, 477)
-  pyautogui.moveTo(color_menu_coords[0], color_menu_coords[1])
-  pyautogui.click()  # click the mouse
-
-def close_color_menu():
-  exit_button_coords = (1000, 618)
-  pyautogui.moveTo(exit_button_coords[0], exit_button_coords[1])
-  pyautogui.click()  # click the mouse
-
-def close_canvas():
-  exit_button_coords = (1278, 388)
-  pyautogui.moveTo(exit_button_coords[0], exit_button_coords[1])
-  pyautogui.click()  # click the mouse
-
-def get_color_from_palette(red, green, blue):
-  im = Image.open('ingame_palette.png')
-  rgb_im = im.convert('RGB')
-  width, height = im.size
-
-  # print(width, height)
-
-  # find most similar coordinate
-  closest_x = 0
-  closest_y = 0
-  closest_dist = 999999999999
-  for x in range(width):
-    for y in range(height):
-       r, g, b = rgb_im.getpixel((x, y))
-
-       dist = abs(red - r) + abs(green - g) + abs(blue - b)
-
-       if dist < closest_dist:
-         closest_dist = dist
-         closest_x = x
-         closest_y = y
-
-  r, g, b = rgb_im.getpixel((closest_x, closest_y))
-  
-  #print(r,g,b)
-  
-  return (closest_x, closest_y)
-
-def select_color(r, g, b):
-  x, y = get_color_from_palette(r, g, b)
-
-  pyautogui.moveTo(684+x, 474+y)
-  pyautogui.click()  # click the mouse
-
-def new_layer():
-  button_coords = (1044, 615)
-  pyautogui.moveTo(button_coords[0], button_coords[1])
-  pyautogui.click()  # click the mouse
-
-def draw_image(im):
-  rgb_im = im.convert('RGB')
-  width, height = im.size
-
-  last_color = None
-
-  for y in range(8): 
-    for x in range(32):
-      if doexit:
+# Main program
+def main():
+    """The main command line loop, used only when the script is directly invoked"""
+    if len(sys.argv) != 2:
+        print("Call the program in the format: python main.py <file>")
         exit()
 
-      # Set the pixel colour based off the image
-      r, g, b = rgb_im.getpixel((x, y))
+    # Establish hotkeys
+    keyboard.on_press_key("p", toggle_pause)
+    keyboard.on_press_key("q", request_exit)
 
-      # If it's not the last color then change the color
-      if last_color != (r,g,b):
-        open_color_menu()
-        select_color(r, g, b)
-        close_color_menu()
-        last_color = (r,g,b) 
-      
-      # Place the pixel
-      coordinate = fetch_canvas_coordinate(x,y)
-      pyautogui.moveTo(coordinate[0], coordinate[1])
-      pyautogui.click()  # click the mouse
+    delay = 5  # Included to allow the user to switch back to the game before starting the script
 
+    print(f"Waiting {delay} seconds before starting...")
 
-"""
-MAIN PROGRAM
-"""
-if len(sys.argv) != 2:
-  print("Call the program in the format: python main.py <file>")
-  exit()
+    for i in range(delay):
+        time.sleep(1)
+        if doexit:
+            exit()
 
-delay = 8
+    # Base gif handling
+    img = Image.open(sys.argv[1])
+    width, height = img.size
 
-print(f"Waiting {delay} seconds before starting...")
+    if width % 32 != 0 or height % 8 != 0:
+        print(
+            f"Image was {width}x{height}, which is not a with that's a multiple of 32 or a height that's a multiple of 8")
 
-for i in range(delay):
-  time.sleep(1)
-  if doexit:
-    exit()
+    horizontal_signs = int(width / 32)
+    vertical_signs = int(height / 8)
+    total_signs = int(horizontal_signs * vertical_signs)
 
-# Base gif handling
-imageObject = Image.open(sys.argv[1])
+    print(f"Image needs {total_signs} total signs")
 
-# Display individual frames from the loaded animated GIF file
-for frame in range(0,imageObject.n_frames): 
-  imageObject.seek(frame)
-  im = imageObject
-  draw_image(im) 
-  new_layer()
+    curr_signs = 0
 
-close_canvas()
+    for v in range(vertical_signs):
+        for h in range(horizontal_signs):
+            # Individual frames from the loaded animated GIF file
+            for frame in range(0, img.n_frames):
+                img.seek(frame)
+                im = img.crop((h*32, v*8, 32 + (h*32), 8 + (v*8)))
+                draw_image(im)
 
-"""
-while True:
-  pass
-"""
+                # Don't continue making new frames if it's the last frame of the gif
+                if frame != img.n_frames - 1:
+                    new_layer()
+
+            # End of each sign, print and cleart
+            print_sign()
+            curr_signs += 1
+
+            if curr_signs == 8:
+                pause = True
+                while pause:
+                    pass
+                curr_signs = 0
+
+            clear_sign()
+
+    close_canvas()
+
+# Only run main function if explicitly called, enables library style usage of functions
+if __name__ == "__main__":
+    main()
